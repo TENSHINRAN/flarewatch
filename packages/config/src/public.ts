@@ -1,7 +1,7 @@
 import type { PageConfig } from '@flarewatch/shared';
 
 export const pageConfig: PageConfig = {
-  title: 'FlareWatch',
+  title: 'Tenshin Server Status',
   links: [
     { label: 'GitHub', link: 'https://github.com/saminnet/flarewatch' },
     { label: 'Cloudflare', link: 'https://www.cloudflare.com/' },
