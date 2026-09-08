@@ -1,7 +1,7 @@
 import type { WorkerConfig } from '@flarewatch/shared';
 
 export const workerConfig: WorkerConfig = {
-  kvWriteCooldownMinutes: 1,
+  kvWriteCooldownMinutes: 60,
   monitors: [
     {
       id: 'us_vps_subscription_8443',

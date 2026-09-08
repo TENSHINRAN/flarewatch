@@ -39,8 +39,8 @@ export interface Env {
   FLAREWATCH_NTFY_WEBHOOK_URL?: string;
 }
 
-/** Default KV write cooldown in minutes */
-const DEFAULT_COOLDOWN_MINUTES = 3;
+/** Default low-frequency KV heartbeat in minutes. */
+const DEFAULT_COOLDOWN_MINUTES = 60;
 
 /** Buffer (in seconds) around grace period threshold for notification timing */
 const GRACE_PERIOD_BUFFER_SECONDS = 30;
@@ -211,7 +211,7 @@ async function runChecks(env: Env): Promise<void> {
     }),
   );
 
-  let stateChanged = false;
+  let writeImmediately = false;
 
   for (const settled of checkResults) {
     if (settled.status === 'rejected') {
@@ -223,8 +223,15 @@ async function runChecks(env: Env): Promise<void> {
     const { monitor, result } = settled.value;
     const { location: checkLocation, result: checkResult } = result;
 
-    const update = processCheckResult(state, monitor, checkResult, currentTime);
-    stateChanged ||= update.statusChanged;
+    const failureConfirmationSeconds = (config.notification?.gracePeriod ?? 0) * 60;
+    const update = processCheckResult(
+      state,
+      monitor,
+      checkResult,
+      currentTime,
+      failureConfirmationSeconds,
+    );
+    writeImmediately ||= update.writeImmediately;
 
     const latency = checkResult.ok ? checkResult.latency : (checkResult.latency ?? 0);
     updateLatency(state, monitor.id, checkLocation, latency, currentTime);
@@ -293,8 +300,8 @@ async function runChecks(env: Env): Promise<void> {
   const cooldownSeconds = (config.kvWriteCooldownMinutes ?? DEFAULT_COOLDOWN_MINUTES) * 60;
   const timeSinceUpdate = currentTime - state.lastUpdate;
 
-  if (stateChanged || timeSinceUpdate >= cooldownSeconds - 10) {
-    log.info('Saving state', { changed: stateChanged });
+  if (writeImmediately || timeSinceUpdate >= cooldownSeconds - 10) {
+    log.info('Saving state', { changed: writeImmediately });
     state.lastUpdate = currentTime;
     await stateKv.put(KV_KEYS.STATE, JSON.stringify(state));
   } else {

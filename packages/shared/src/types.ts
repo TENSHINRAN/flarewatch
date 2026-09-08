@@ -155,6 +155,19 @@ export type MonitorState = {
   overallDown: number;
   /** Unix timestamp (seconds) of the first check per monitor */
   startedAt: Record<string, number>;
+  /**
+   * Transient failures awaiting confirmation. The first failed check is
+   * persisted once so later scheduled runs can confirm the outage without
+   * writing KV every minute.
+   */
+  pendingFailures?: Record<
+    string,
+    {
+      /** Unix timestamp (seconds) of the first failed check. */
+      since: number;
+      error: string;
+    }
+  >;
   incident: Record<
     string,
     {

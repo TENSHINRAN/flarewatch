@@ -26,6 +26,15 @@ const MonitorStateSchema = z.object({
   overallUp: z.number(),
   overallDown: z.number(),
   startedAt: z.record(z.string(), z.number()),
+  pendingFailures: z
+    .record(
+      z.string(),
+      z.object({
+        since: z.number(),
+        error: z.string(),
+      }),
+    )
+    .optional(),
   incident: z.record(z.string(), z.array(IncidentSchema)),
   latency: z.record(z.string(), z.object({ recent: z.array(LatencyPointSchema) })),
   sslCertificates: z.record(z.string(), SslCertificateSchema).optional(),

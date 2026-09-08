@@ -108,7 +108,7 @@ function createKv(initial: Record<string, unknown> = {}) {
     return structuredClone(values.get(key));
   });
   const put = vi.fn(async (key: string, value: string) => {
-    values.set(key, value);
+    values.set(key, JSON.parse(value));
   });
 
   return { get, put };
@@ -318,7 +318,7 @@ describe('worker', () => {
 
     it('saves state when the write cooldown has elapsed', async () => {
       const stateKv = createKv({
-        [KV_KEYS.STATE]: createState({ lastUpdate: NOW_SECONDS - 180 }),
+        [KV_KEYS.STATE]: createState({ lastUpdate: NOW_SECONDS - 3600 }),
       });
 
       await runScheduled({ STATE_KV: asKv(stateKv) });
@@ -334,6 +334,75 @@ describe('worker', () => {
       await runScheduled({ STATE_KV: asKv(stateKv) });
 
       expect(stateKv.put).not.toHaveBeenCalled();
+    });
+
+    it('persists a pending failure once, confirms it after three minutes, and debounces notifications', async () => {
+      setNotifications({ gracePeriod: 3, skipErrorChangeNotification: true });
+      mockDown();
+      const stateKv = createKv({ [KV_KEYS.STATE]: createState() });
+
+      await runScheduled({ STATE_KV: asKv(stateKv) });
+
+      expect(stateKv.put).toHaveBeenCalledTimes(1);
+      const firstSaved = JSON.parse(stateKv.put.mock.calls[0]?.[1] as string) as MonitorState;
+      expect(firstSaved.pendingFailures).toEqual({
+        'test-monitor': { since: NOW_SECONDS, error: 'Unavailable' },
+      });
+      expect(firstSaved.incident['test-monitor']).toEqual([]);
+      expect(firstSaved.overallUp).toBe(1);
+      expect(firstSaved.overallDown).toBe(0);
+      expect(notifierSendMock).not.toHaveBeenCalled();
+
+      stateKv.put.mockClear();
+      vi.setSystemTime(new Date((NOW_SECONDS + 60) * 1000));
+      await runScheduled({ STATE_KV: asKv(stateKv) });
+      expect(stateKv.put).not.toHaveBeenCalled();
+      expect(notifierSendMock).not.toHaveBeenCalled();
+
+      vi.setSystemTime(new Date((NOW_SECONDS + 180) * 1000));
+      await runScheduled({ STATE_KV: asKv(stateKv) });
+      expect(stateKv.put).toHaveBeenCalledTimes(1);
+      const confirmedState = JSON.parse(stateKv.put.mock.calls[0]?.[1] as string) as MonitorState;
+      expect(confirmedState.pendingFailures?.['test-monitor']).toBeUndefined();
+      expect(confirmedState.incident['test-monitor']?.[0]).toMatchObject({
+        start: [NOW_SECONDS],
+        error: ['Unavailable'],
+      });
+      expect(confirmedState.overallDown).toBe(1);
+      expect(notifierSendMock).toHaveBeenCalledTimes(1);
+      expect(notifierSendMock.mock.calls[0]?.[0]).toMatchObject({ isUp: false });
+
+      stateKv.put.mockClear();
+      vi.setSystemTime(new Date((NOW_SECONDS + 240) * 1000));
+      await runScheduled({ STATE_KV: asKv(stateKv) });
+      expect(stateKv.put).not.toHaveBeenCalled();
+      expect(notifierSendMock).toHaveBeenCalledTimes(1);
+
+      mockUp();
+      vi.setSystemTime(new Date((NOW_SECONDS + 300) * 1000));
+      await runScheduled({ STATE_KV: asKv(stateKv) });
+      expect(stateKv.put).toHaveBeenCalledTimes(1);
+      expect(notifierSendMock).toHaveBeenCalledTimes(2);
+      expect(notifierSendMock.mock.calls[1]?.[0]).toMatchObject({ isUp: true });
+    });
+
+    it('clears a short pending failure with one recovery write and no notification', async () => {
+      setNotifications({ gracePeriod: 3 });
+      mockDown();
+      const stateKv = createKv({ [KV_KEYS.STATE]: createState() });
+
+      await runScheduled({ STATE_KV: asKv(stateKv) });
+      stateKv.put.mockClear();
+
+      mockUp();
+      vi.setSystemTime(new Date((NOW_SECONDS + 60) * 1000));
+      await runScheduled({ STATE_KV: asKv(stateKv) });
+
+      expect(stateKv.put).toHaveBeenCalledTimes(1);
+      const recoveredState = JSON.parse(stateKv.put.mock.calls[0]?.[1] as string) as MonitorState;
+      expect(recoveredState.pendingFailures?.['test-monitor']).toBeUndefined();
+      expect(recoveredState.incident['test-monitor']).toEqual([]);
+      expect(notifierSendMock).not.toHaveBeenCalled();
     });
   });
 

@@ -139,6 +139,59 @@ describe('incidents', () => {
 
       expect(result.incidentStartTime).toBe(1000);
     });
+
+    it('keeps a failure pending until the confirmation threshold is reached', () => {
+      const state = createInitialState();
+      const monitor = createMonitor();
+
+      const first = processCheckResult(state, monitor, { ok: false, error: 'Timeout' }, 1000, 180);
+      expect(first).toMatchObject({
+        statusChanged: false,
+        writeImmediately: true,
+        isUp: true,
+      });
+      expect(state.pendingFailures?.[monitor.id]).toEqual({ since: 1000, error: 'Timeout' });
+      expect(state.incident[monitor.id]).toEqual([]);
+
+      const second = processCheckResult(state, monitor, { ok: false, error: 'Timeout' }, 1060, 180);
+      expect(second.writeImmediately).toBe(false);
+      expect(state.incident[monitor.id]).toEqual([]);
+
+      const confirmed = processCheckResult(
+        state,
+        monitor,
+        { ok: false, error: 'Timeout' },
+        1180,
+        180,
+      );
+      expect(confirmed).toMatchObject({
+        statusChanged: true,
+        writeImmediately: true,
+        changeType: 'down',
+        isUp: false,
+        incidentStartTime: 1000,
+      });
+      expect(state.pendingFailures?.[monitor.id]).toBeUndefined();
+      expect(state.incident[monitor.id]?.[0]?.start).toEqual([1000]);
+    });
+
+    it('clears a pending failure without opening an incident when service recovers', () => {
+      const state = createInitialState();
+      const monitor = createMonitor();
+      state.pendingFailures = {
+        [monitor.id]: { since: 1000, error: 'Timeout' },
+      };
+
+      const result = processCheckResult(state, monitor, { ok: true, latency: 100 }, 1060, 180);
+
+      expect(result).toMatchObject({
+        statusChanged: false,
+        writeImmediately: true,
+        isUp: true,
+      });
+      expect(state.pendingFailures?.[monitor.id]).toBeUndefined();
+      expect(state.incident[monitor.id]).toEqual([]);
+    });
   });
 
   describe('updateLatency', () => {
@@ -234,6 +287,7 @@ describe('incidents', () => {
         overallUp: 0,
         overallDown: 0,
         startedAt: {},
+        pendingFailures: {},
         incident: {},
         latency: {},
       });

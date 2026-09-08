@@ -10,6 +10,7 @@ const LATENCY_RETENTION_SECONDS = 12 * 60 * 60; // 12 hours
 
 export interface IncidentUpdate {
   statusChanged: boolean;
+  writeImmediately: boolean;
   changeType: 'none' | 'up' | 'down' | 'error';
   isUp: boolean;
   incidentStartTime: number;
@@ -30,6 +31,7 @@ export function processCheckResult(
   monitor: MonitorTarget,
   result: CheckResult,
   currentTime: number,
+  failureConfirmationSeconds = 0,
 ): IncidentUpdate {
   ensureMonitorState(state, monitor.id, currentTime);
 
@@ -37,6 +39,7 @@ export function processCheckResult(
   if (!incidents) {
     return {
       statusChanged: false,
+      writeImmediately: false,
       changeType: 'none',
       isUp: result.ok,
       incidentStartTime: currentTime,
@@ -51,6 +54,11 @@ export function processCheckResult(
   if (result.ok) {
     state.overallUp++;
 
+    const hadPendingFailure = Boolean(state.pendingFailures?.[monitor.id]);
+    if (hadPendingFailure) {
+      delete state.pendingFailures?.[monitor.id];
+    }
+
     if (lastIncident && lastIncident.end === undefined) {
       lastIncident.end = currentTime;
       statusChanged = true;
@@ -60,12 +68,64 @@ export function processCheckResult(
     const incidentStart = lastIncident?.start[0];
     return {
       statusChanged,
+      writeImmediately: statusChanged || hadPendingFailure,
       changeType,
       isUp: true,
       incidentStartTime: incidentStart ?? currentTime,
       error: '',
     };
   } else {
+    const openIncident = lastIncident && lastIncident.end === undefined;
+
+    if (!openIncident && failureConfirmationSeconds > 0) {
+      state.pendingFailures ??= {};
+      const pendingFailure = state.pendingFailures[monitor.id];
+
+      if (!pendingFailure) {
+        state.pendingFailures[monitor.id] = {
+          since: currentTime,
+          error: result.error,
+        };
+        state.overallUp++;
+        return {
+          statusChanged: false,
+          writeImmediately: true,
+          changeType: 'none',
+          isUp: true,
+          incidentStartTime: currentTime,
+          error: result.error,
+        };
+      }
+
+      if (currentTime - pendingFailure.since < failureConfirmationSeconds) {
+        state.overallUp++;
+        return {
+          statusChanged: false,
+          writeImmediately: false,
+          changeType: 'none',
+          isUp: true,
+          incidentStartTime: pendingFailure.since,
+          error: pendingFailure.error,
+        };
+      }
+
+      delete state.pendingFailures[monitor.id];
+      incidents.push({
+        start: [pendingFailure.since],
+        end: undefined,
+        error: [pendingFailure.error],
+      });
+      state.overallDown++;
+      return {
+        statusChanged: true,
+        writeImmediately: true,
+        changeType: 'down',
+        isUp: false,
+        incidentStartTime: pendingFailure.since,
+        error: pendingFailure.error,
+      };
+    }
+
     state.overallDown++;
 
     if (!lastIncident || lastIncident.end !== undefined) {
@@ -90,6 +150,7 @@ export function processCheckResult(
     const incidentStart = currentIncident?.start[0];
     return {
       statusChanged,
+      writeImmediately: changeType === 'down',
       changeType,
       isUp: false,
       incidentStartTime: incidentStart ?? currentTime,
@@ -164,6 +225,7 @@ export function createInitialState(): MonitorState {
     overallUp: 0,
     overallDown: 0,
     startedAt: {},
+    pendingFailures: {},
     incident: {},
     latency: {},
   };
