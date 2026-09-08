@@ -60,6 +60,11 @@ jobs:
         timeout-minutes: 10
         run: vp exec --filter status-page -- playwright install --with-deps --only-shell chromium
 
+      - name: Prepare seeded browser test config
+        run: |
+          cp packages/config/src/worker.e2e.ts packages/config/src/worker.ts
+          cp packages/config/src/public.e2e.ts packages/config/src/public.ts
+
       - name: Run status page browser tests
         timeout-minutes: 10
         run: vp exec --filter status-page -- playwright test
