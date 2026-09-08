@@ -13,4 +13,9 @@ export const workerConfig: WorkerConfig = {
       link: false,
     },
   ],
+  notification: {
+    timeZone: 'Asia/Shanghai',
+    gracePeriod: 3,
+    skipErrorChangeNotification: true,
+  },
 };
