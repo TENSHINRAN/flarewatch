@@ -35,6 +35,8 @@ export interface Env {
    * If set, the worker sends `Authorization: Bearer <token>` with every proxied check request.
    */
   FLAREWATCH_PROXY_TOKEN?: string;
+  /** Optional ntfy endpoint stored as a Worker secret, never in source control. */
+  FLAREWATCH_NTFY_WEBHOOK_URL?: string;
 }
 
 /** Default KV write cooldown in minutes */
@@ -42,6 +44,22 @@ const DEFAULT_COOLDOWN_MINUTES = 3;
 
 /** Buffer (in seconds) around grace period threshold for notification timing */
 const GRACE_PERIOD_BUFFER_SECONDS = 30;
+
+function applyEnvironmentSecrets(config: RuntimeConfig, env: Env): RuntimeConfig {
+  const ntfyWebhookUrl = env.FLAREWATCH_NTFY_WEBHOOK_URL?.trim();
+  if (!ntfyWebhookUrl) return config;
+
+  return {
+    ...config,
+    notification: {
+      ...config.notification,
+      webhook: {
+        url: ntfyWebhookUrl,
+        template: 'ntfy',
+      },
+    },
+  };
+}
 
 function getStateKv(env: Env): KVNamespace {
   const kv = env.STATE_KV ?? env.FLAREWATCH_STATE;
@@ -55,7 +73,7 @@ async function loadEffectiveConfig(env: Env): Promise<RuntimeConfig> {
   if (env.CONFIG_KV) {
     const runtimeConfig = await loadRuntimeConfig(env.CONFIG_KV);
     if (runtimeConfig) {
-      return runtimeConfig;
+      return applyEnvironmentSecrets(runtimeConfig, env);
     }
     log.error('Invalid runtime config in CONFIG_KV, falling back to static config');
   }
@@ -67,7 +85,7 @@ async function loadEffectiveConfig(env: Env): Promise<RuntimeConfig> {
   if (workerConfig.kvWriteCooldownMinutes !== undefined) {
     config.kvWriteCooldownMinutes = workerConfig.kvWriteCooldownMinutes;
   }
-  return config;
+  return applyEnvironmentSecrets(config, env);
 }
 
 function isInMaintenance(

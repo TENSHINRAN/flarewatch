@@ -177,6 +177,7 @@ jobs:
       - name: Deploy with Wrangler
         env:
           FLAREWATCH_PROXY_TOKEN: ${{ secrets.FLAREWATCH_PROXY_TOKEN }}
+          FLAREWATCH_NTFY_WEBHOOK_URL: ${{ secrets.FLAREWATCH_NTFY_WEBHOOK_URL }}
           FLAREWATCH_STATUS_PAGE_BASIC_AUTH: ${{ secrets.FLAREWATCH_STATUS_PAGE_BASIC_AUTH }}
           FLAREWATCH_ADMIN_BASIC_AUTH: ${{ secrets.FLAREWATCH_ADMIN_BASIC_AUTH }}
         shell: bash
@@ -200,6 +201,7 @@ jobs:
           echo "Deploying monitoring worker"
           vp exec --filter worker -- wrangler deploy --config wrangler.toml
           put_secret worker wrangler.toml FLAREWATCH_PROXY_TOKEN "$FLAREWATCH_PROXY_TOKEN"
+          put_secret worker wrangler.toml FLAREWATCH_NTFY_WEBHOOK_URL "$FLAREWATCH_NTFY_WEBHOOK_URL"
 
           echo "Building status page"
           vp run --filter status-page build

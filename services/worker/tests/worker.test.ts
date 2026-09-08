@@ -143,6 +143,7 @@ async function runScheduled(env: {
   CONFIG_KV?: KVNamespace;
   STATE_KV?: KVNamespace;
   FLAREWATCH_STATE?: KVNamespace;
+  FLAREWATCH_NTFY_WEBHOOK_URL?: string;
 }): Promise<void> {
   const { default: Worker } = await import('../src/index');
   await Worker.scheduled({} as ScheduledEvent, env, {} as ExecutionContext);
@@ -337,6 +338,22 @@ describe('worker', () => {
   });
 
   describe('configuration', () => {
+    it('uses an ntfy webhook supplied through a Worker secret', async () => {
+      workerConfigMock.notification = { gracePeriod: 3 };
+      const stateKv = createKv();
+
+      await runScheduled({
+        STATE_KV: asKv(stateKv),
+        FLAREWATCH_NTFY_WEBHOOK_URL: 'https://ntfy.sh/test-only-topic',
+      });
+
+      expect(createNotifierMock).toHaveBeenCalledWith({
+        url: 'https://ntfy.sh/test-only-topic',
+        template: 'ntfy',
+      });
+      expect(workerConfigMock.notification.webhook).toBeUndefined();
+    });
+
     it('uses a valid runtime config from CONFIG_KV', async () => {
       const staticMonitor = createMonitor('static');
       const runtimeMonitor = createMonitor('runtime');
