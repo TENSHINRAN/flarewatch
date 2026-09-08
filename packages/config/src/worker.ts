@@ -5,9 +5,9 @@ export const workerConfig: WorkerConfig = {
   monitors: [
     {
       id: 'us_vps_subscription_8443',
-      name: 'US VPS Subscription (8443)',
+      name: 'US VPS HTTPS Gateway (8443)',
       method: 'HEAD',
-      target: 'https://sub.tenshinran.com:8443/',
+      target: 'https://sub.tenshinran.com:8443/traffic/',
       expectedCodes: [200],
       timeout: 10000,
       link: false,
