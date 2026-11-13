@@ -195,6 +195,9 @@ async function runChecks(env: Env): Promise<void> {
     type: 'json',
   });
   const state: MonitorState = isMonitorState(storedState) ? storedState : createInitialState();
+  // Newly added monitors should appear on the status page after their first check,
+  // rather than waiting for the normal hourly KV write cooldown.
+  const previouslySavedMonitorIds = new Set(Object.keys(state.startedAt));
   resetCounters(state);
 
   const maintenances = await loadMaintenances(stateKv);
@@ -231,7 +234,7 @@ async function runChecks(env: Env): Promise<void> {
       currentTime,
       failureConfirmationSeconds,
     );
-    writeImmediately ||= update.writeImmediately;
+    writeImmediately ||= update.writeImmediately || !previouslySavedMonitorIds.has(monitor.id);
 
     const latency = checkResult.ok ? checkResult.latency : (checkResult.latency ?? 0);
     updateLatency(state, monitor.id, checkLocation, latency, currentTime);
