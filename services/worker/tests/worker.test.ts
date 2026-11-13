@@ -326,9 +326,24 @@ describe('worker', () => {
       expect(stateKv.put).toHaveBeenCalledTimes(1);
     });
 
-    it('skips saving state when no status changed and the cooldown has not elapsed', async () => {
+    it('saves a newly added monitor after its first successful check', async () => {
       const stateKv = createKv({
         [KV_KEYS.STATE]: createState({ lastUpdate: NOW_SECONDS - 60 }),
+      });
+
+      await runScheduled({ STATE_KV: asKv(stateKv) });
+
+      expect(stateKv.put).toHaveBeenCalledTimes(1);
+      const saved = JSON.parse(stateKv.put.mock.calls[0]?.[1] as string) as MonitorState;
+      expect(saved.startedAt['test-monitor']).toBe(NOW_SECONDS);
+    });
+
+    it('skips saving state when no status changed and the cooldown has not elapsed', async () => {
+      const stateKv = createKv({
+        [KV_KEYS.STATE]: createState({
+          lastUpdate: NOW_SECONDS - 60,
+          startedAt: { 'test-monitor': NOW_SECONDS - 120 },
+        }),
       });
 
       await runScheduled({ STATE_KV: asKv(stateKv) });
