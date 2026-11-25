@@ -1,4 +1,3 @@
-
 import type { WorkerConfig } from '@flarewatch/shared';
 
 export const workerConfig: WorkerConfig = {
